@@ -1,50 +1,68 @@
 package com.example.xdwallpaper.storage
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import java.io.File
 import java.io.FileOutputStream
+import java.util.zip.ZipInputStream
 
 object WallpaperManagerHelper {
-    private const val PREFS_NAME = "xd_wallpaper_prefs"
-    private const val KEY_ACTIVE_PATH = "active_video_path"
-    private const val MAX_FILE_SIZE = 100 * 1024 * 1024
+    private const val PREFS = "xd_prefs"
+    const val ACTION_RELOAD_WALLPAPER = "com.example.xdwallpaper.ACTION_RELOAD_WALLPAPER"
 
-    fun getActiveWallpaperPath(context: Context): String? {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_ACTIVE_PATH, null)
-    }
+    fun getActiveWallpaperPath(ctx: Context): String? =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("path", null)
 
-    fun setActiveWallpaperPath(context: Context, path: String) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    fun setActiveWallpaperPath(ctx: Context, path: String) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
-            .putString(KEY_ACTIVE_PATH, path)
+            .putString("path", path)
             .apply()
+        
+        // Отправляем сигнал сервису обновить видеопоток на лету
+        val intent = Intent(ACTION_RELOAD_WALLPAPER).apply {
+            setPackage(ctx.packageName)
+        }
+        ctx.sendBroadcast(intent)
     }
 
-    fun copyMp4ToInternal(context: Context, uri: Uri, targetName: String): File? {
-        val target = File(context.filesDir, targetName)
-        var totalBytes = 0L
-
+    fun saveFile(ctx: Context, uri: Uri, isXd: Boolean): File? {
+        // Уникальное имя исключает конфликт дескрипторов плеера
+        val newFile = File(ctx.filesDir, "wp_${System.currentTimeMillis()}.mp4")
+        
         return try {
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(target).use { output ->
-                    val buffer = ByteArray(8192)
-                    var bytes: Int
-                    while (input.read(buffer).also { bytes = it } > 0) {
-                        totalBytes += bytes
-                        if (totalBytes > MAX_FILE_SIZE) {
-                            target.delete()
-                            return null
+            ctx.contentResolver.openInputStream(uri)?.use { input ->
+                if (isXd) {
+                    ZipInputStream(input).use { zis ->
+                        var entry = zis.nextEntry
+                        while (entry != null) {
+                            if (entry.name.endsWith(".mp4", ignoreCase = true)) {
+                                FileOutputStream(newFile).use { zis.copyTo(it) }
+                                cleanOldFiles(ctx, newFile)
+                                return newFile
+                            }
+                            entry = zis.nextEntry
                         }
-                        output.write(buffer, 0, bytes)
                     }
+                } else {
+                    FileOutputStream(newFile).use { input.copyTo(it) }
+                    cleanOldFiles(ctx, newFile)
+                    return newFile
                 }
             }
-            target
+            null
         } catch (e: Exception) {
             e.printStackTrace()
             null
+        }
+    }
+
+    private fun cleanOldFiles(ctx: Context, keepFile: File) {
+        ctx.filesDir.listFiles()?.forEach { file ->
+            if (file.name.startsWith("wp_") && file.absolutePath != keepFile.absolutePath) {
+                file.delete()
+            }
         }
     }
 }
