@@ -1,4 +1,4 @@
-# 🎬 XD Wallpaper Engine
+# XD Wallpaper Engine
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Android_8.0+-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/Language-Kotlin-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin" />
